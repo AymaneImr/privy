@@ -2,8 +2,25 @@
 name = "privy"
 version = "0.1.0"
 edition = "2021"
+authors = ["archon"]
+repository = "https://github.com/AymaneImr/privy/"
+
+[[bin]]
+name = "server"
+path = "./src/bin/server.rs"
+
+[[bin]]
+name = "client"
+path = "./src/bin/client.rs"
+
+[lib]
+name = "privy"
+path = "src/lib.rs"
+
 
 [dependencies]
+clap = { version = "4.5.36", features = ["derive"] }
+getrandom = "0.3.2"
 tokio = { version = "1.43.0", features = ["full"] }
 
 
