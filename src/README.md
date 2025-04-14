@@ -4,7 +4,6 @@ graph TD
         lib[lib.rs]
         tokens[token.rs]
         messages[messages.rs]
-        protocol[protocol.rs]
         
     end
 
@@ -35,5 +34,4 @@ graph TD
 
     lib --> tokens
     lib --> messages
-    lib --> protocol
 ```
