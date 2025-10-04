@@ -1,16 +1,20 @@
 #![allow(unused)]
 
+use crate::messages::from_bytes;
 use crate::{messages::to_bytes, messages::Messages, token::Token};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::io::{AsyncBufReadExt, BufReader};
+use std::thread::sleep;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast::{Receiver, Sender};
 use tokio::sync::Mutex;
 
+//TODO: Add username field
 #[derive(Debug, Clone)]
 pub struct Client {
-    stream: Arc<Mutex<TcpStream>>,
+    pub reader: Arc<Mutex<ReadHalf<TcpStream>>>,
+    pub writer: Arc<Mutex<WriteHalf<TcpStream>>>,
     pub addr: SocketAddr,
     pub tx: Sender<Messages>,
 }
@@ -24,56 +28,47 @@ impl Client {
             .await
             .expect("Failed to accept connection!!");
 
-        let stream = Arc::new(Mutex::new(stream));
+        let (reader, writer) = tokio::io::split(stream);
 
-        Self { stream, addr, tx }
+        Self {
+            reader: Arc::new(Mutex::new(reader)),
+            writer: Arc::new(Mutex::new(writer)),
+            addr,
+            tx,
+        }
     }
 
     // Handle client's connection and messages broadcasting
-    pub async fn handle_client(self: Arc<Self>, mut rx: Receiver<Messages>, token: Arc<Token>) {
-        let mut stream = self.stream.lock().await;
-
-        let (reader, writer) = stream.split();
-        let mut reader = BufReader::new(reader);
+    pub async fn handle_client(self: Arc<Self>, client_token: Arc<Token>) {
+        let mut reader = self.reader.lock().await;
+        let mut reader = BufReader::new(&mut *reader);
         let mut line: String = String::new();
 
-        // Bind the writer inside `Mutex` to ensure exclusive access,
-        // stored in `Arc` to easily allow shared ownership
-        let writer = Arc::new(Mutex::new(writer));
-
         loop {
-            tokio::select! {
+            let bytes_read = reader.read_line(&mut line);
 
-                bytes_read = reader.read_line(&mut line) => {
+            let bytes_read = bytes_read.await.unwrap_or(0);
+            if bytes_read == 0 {
+                let _ = self
+                    .tx
+                    .send(Messages::ClientDisconnected {
+                        client: self.clone(),
+                        token: client_token.clone(),
+                    })
+                    .map_err(|err| eprintln!("Couldn't broadcast the message!! {}", err));
+                break;
+            };
 
-                let bytes_read = bytes_read.unwrap_or(0);
-                if bytes_read == 0 {
+            let msg = format!("{}: {}", self.addr, line);
 
-                   let _ = self.tx.send(Messages::ClientDisconnected(token.clone()))
-                       .map_err(|err| eprintln!("Couldn't broadcast the message!! {}", err) );
-                   break;
-                };
-
-                let msg = format!("{}: {}", self.addr, line);
-                println!("{}", msg);
-
-                if let Err(err) = self.tx.send(Messages::NewMessage { token: token.clone(), message: to_bytes(&line) }){
-                    eprintln!("Couldn't broadcast the message!! {}", err);
-                }
-                line.clear()
-                },
-
-                msg = rx.recv() => {
-                    if let Ok(msg) = msg{
-                        let mut writer = writer.lock().await;
-
-                        /*
-                        if let Err(err) = writer.write_all(msg.as_bytes()).await{
-                            eprintln!("Couldn't send message to {}: {}", Sens(self.addr), err);
-                        }*/
-                    }
-                }
+            if let Err(err) = self.tx.send(Messages::NewMessage {
+                token: client_token.clone(),
+                message: to_bytes(&line),
+            }) {
+                eprintln!("Couldn't broadcast the message!! {}", err);
             }
+
+            line.clear();
         }
     }
 }

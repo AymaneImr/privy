@@ -23,27 +23,24 @@ pub async fn start_server(addr: String) {
     // Create a broadcast channel to send and receive multiple messages
     let (tx, rx) = broadcast::channel(16);
 
-    tokio::spawn(manager.handle_messages(rx));
+    tokio::spawn(manager.clone().handle_messages(rx));
 
     let listener = Arc::new(listener);
 
-    // Loop infinitely to create and accept new connections,
+    // Loop infinitely to create and accept new connections.
     loop {
         let tx = tx.clone();
-        let rx = tx.subscribe();
         let client = Arc::new(Client::new(Arc::clone(&listener), tx.clone()).await);
 
         let token = Arc::new(get_token());
 
-        let _ = client
-            .tx
-            .send(Messages::ClientConnected {
-                client: Arc::clone(&client),
-                token: Arc::clone(&token),
-            })
-            .map_err(|err| eprintln!("Couldn't broadcast the message!! {}", err));
+        // Notify the manager  (through the broadcast channel)
+        let _ = tx.send(Messages::ClientConnected {
+            client: Arc::clone(&client),
+            token: Arc::clone(&token),
+        });
 
         // Spawn a task to handle each client simultaneously
-        tokio::spawn(client.handle_client(rx, token));
+        tokio::spawn(client.handle_client(token));
     }
 }

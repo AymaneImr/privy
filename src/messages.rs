@@ -1,13 +1,17 @@
 use crate::{client::connection::Client, token::Token};
 use std::sync::Arc;
 
+//TODO: Add username variant
 #[derive(Debug, Clone)]
 pub enum Messages {
     ClientConnected {
         client: Arc<Client>,
         token: Arc<Token>,
     },
-    ClientDisconnected(Arc<Token>),
+    ClientDisconnected {
+        client: Arc<Client>,
+        token: Arc<Token>,
+    },
     NewMessage {
         token: Arc<Token>,
         message: Vec<u8>,
