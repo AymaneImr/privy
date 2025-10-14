@@ -1,7 +1,7 @@
-#[allow(unused)]
+#![allow(unused)]
 use crate::{
     client::connection::Client, messages::from_bytes, messages::to_bytes, messages::Messages,
-    token::Token,
+    messages::MessagesHistory, token::Token,
 };
 use std::collections::HashMap;
 use std::fmt;
@@ -10,11 +10,12 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinSet;
 
-const SAFE_MODE: bool = false;
+const SAFE_MODE: bool = true;
 
 #[derive(Debug, Default, Clone)]
 pub struct ServerManager {
     pub clients: HashMap<Arc<Token>, Arc<Client>>,
+    pub logs: MessagesHistory,
 }
 
 #[derive(Debug)]
@@ -54,7 +55,10 @@ impl ServerManager {
                         //TODO: properly handle in case `Some()` was returned
                         if self.add_client(client.clone(), token.clone()).is_none() {
                             println!(" {} Successfully joined the server.", Private(client.addr));
-                            let mssg = format!("{} Successfully joined the server.\n", client.addr);
+                            let mssg = format!(
+                                "{} Successfully joined the server.\n",
+                                Private(client.addr)
+                            );
 
                             self.broadcast(clients, token.clone(), to_bytes(&mssg))
                                 .await;
@@ -64,7 +68,7 @@ impl ServerManager {
                         if let Some(client) = self.clients.get(token) {
                             println!(" {} disconnected", Private(client.addr));
 
-                            let mssg = format!(" {} disconnected\n", client.addr);
+                            let mssg = format!(" {} disconnected\n", Private(client.addr));
 
                             self.remove_client(token.clone());
                             self.broadcast(clients, token.clone(), to_bytes(&mssg))
@@ -80,6 +84,8 @@ impl ServerManager {
                             let mssg =
                                 format!(" {:?}: {}\n", Private(client_addr), Private(msg.clone()));
                             println!("{}", mssg);
+
+                            self.logs.append(token.clone(), to_bytes(&mssg));
 
                             self.broadcast(clients, token.clone(), to_bytes(&mssg))
                                 .await;

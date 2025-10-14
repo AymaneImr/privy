@@ -1,3 +1,4 @@
+#[allow(unused)]
 use crate::{client::connection::Client, token::Token};
 use std::sync::Arc;
 
@@ -16,6 +17,20 @@ pub enum Messages {
         token: Arc<Token>,
         message: Vec<u8>,
     },
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct MessagesHistory {
+    pub log_msgs: Vec<Option<Messages>>,
+}
+
+impl MessagesHistory {
+    pub fn append(&mut self, token: Arc<Token>, msg: Vec<u8>) {
+        self.log_msgs.push(Some(Messages::NewMessage {
+            token,
+            message: msg,
+        }));
+    }
 }
 
 pub fn from_bytes(b_message: &Vec<u8>) -> Result<String, ()> {
