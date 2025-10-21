@@ -4,6 +4,7 @@ graph TD
         lib[lib.rs]
         tokens[token.rs]
         messages[messages.rs]
+        roles[roles.rs]
         
     end
 
@@ -34,4 +35,5 @@ graph TD
 
     lib --> tokens
     lib --> messages
+    lib --> roles
 ```
