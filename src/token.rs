@@ -1,7 +1,7 @@
 use getrandom;
 use std::fmt::Write;
 
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Default)]
 pub struct Token(pub String);
 
 pub fn get_token() -> Token {

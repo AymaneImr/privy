@@ -1,21 +1,32 @@
 #![allow(unused)]
 use crate::{
-    client::connection::Client, messages::from_bytes, messages::to_bytes, messages::Messages,
-    messages::MessagesHistory, token::Token,
+    client::connection::Client,
+    messages::from_bytes,
+    messages::to_bytes,
+    messages::Messages,
+    messages::MessagesHistory,
+    roles::{Permission, Roles},
+    token::Token,
 };
 use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast::Receiver;
+use tokio::sync::Mutex;
 use tokio::task::JoinSet;
 
 const SAFE_MODE: bool = true;
+const USE_CACHE: bool = true;
 
 #[derive(Debug, Default, Clone)]
 pub struct ServerManager {
+    pub server_token: Arc<Token>,
     pub clients: HashMap<Arc<Token>, Arc<Client>>,
     pub logs: MessagesHistory,
+    pub cache: ServerCache,
 }
 
 #[derive(Debug)]
@@ -31,6 +42,12 @@ impl<T: fmt::Display> fmt::Display for Private<T> {
             write!(f, "{}", inner)
         }
     }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ServerCache {
+    clients: HashMap<Arc<Token>, Arc<Client>>,
+    use_cache: bool,
 }
 
 impl ServerManager {
@@ -80,9 +97,25 @@ impl ServerManager {
                         ref message,
                     } => {
                         if let Ok(msg) = from_bytes(message) {
-                            let client_addr = self.clients.get(token);
+                            let client = self.clients.get(token).unwrap();
+                            //TODO: notify the client that he doesn't have the permission
+                            //      to send messages
+                            if !client.role.permissions().send {
+                                eprintln!("this client can't send messages");
+                                continue;
+                            }
+
+                            //Limit messages sent rate
+                            let mut last_sent = client.last_sent.lock().await;
+                            let now = Instant::now();
+                            if now.duration_since(*last_sent) < Duration::from_secs(2) {
+                                eprintln!("Client is sending messages too fast");
+                                continue;
+                            }
+                            *last_sent = now;
+
                             let mssg =
-                                format!(" {:?}: {}\n", Private(client_addr), Private(msg.clone()));
+                                format!("{:?}: {}\n", Private(client.addr), Private(msg.clone()));
                             println!("{}", mssg);
 
                             self.logs.append(token.clone(), to_bytes(&mssg));
@@ -105,6 +138,8 @@ impl ServerManager {
         let mut set = JoinSet::new();
 
         for (token, client) in clients.into_iter() {
+            let perm = client.role.permissions();
+
             if !Arc::ptr_eq(&token, &client_token) {
                 let message = message.clone();
                 set.spawn(async move {

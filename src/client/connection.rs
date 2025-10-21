@@ -1,10 +1,11 @@
 #![allow(unused)]
 
 use crate::messages::from_bytes;
-use crate::{messages::to_bytes, messages::Messages, token::Token};
+use crate::{messages::to_bytes, messages::Messages, roles::Roles, token::Token};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::thread::sleep;
+use std::time::Instant;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::broadcast::{Receiver, Sender};
@@ -13,28 +14,33 @@ use tokio::sync::Mutex;
 //TODO: Add username field
 #[derive(Debug, Clone)]
 pub struct Client {
+    pub role: Roles,
     pub reader: Arc<Mutex<ReadHalf<TcpStream>>>,
     pub writer: Arc<Mutex<WriteHalf<TcpStream>>>,
     pub addr: SocketAddr,
     pub tx: Sender<Messages>,
+    pub last_sent: Arc<Mutex<Instant>>,
 }
 
 impl Client {
     // Await a new client connection and then returns the client's instance
     // with a TCP stream, address, sender, and receiver.
-    pub async fn new(listener: Arc<TcpListener>, tx: Sender<Messages>) -> Self {
+    pub async fn new(listener: Arc<TcpListener>, tx: Sender<Messages>, role: Roles) -> Self {
         let (stream, addr) = listener
             .accept()
             .await
             .expect("Failed to accept connection!!");
 
         let (reader, writer) = tokio::io::split(stream);
+        let last_sent = Arc::new(Mutex::new(Instant::now()));
 
         Self {
             reader: Arc::new(Mutex::new(reader)),
             writer: Arc::new(Mutex::new(writer)),
             addr,
             tx,
+            role,
+            last_sent,
         }
     }
 
